@@ -52,9 +52,9 @@
     try {
       const days = await loadSymbol(code);
       $('rangeHint').textContent = '可选范围：' + days[0].d + ' ~ ' + days[days.length - 1].d +
-        '（共 ' + days.length + ' 个交易日）';
+        '（共 ' + days.length + ' 个交易日）· 非交易日会自动对齐到下一个交易日';
       $('startDate').min = days[0].d;
-      $('startDate').max = days[Math.max(0, days.length - 30)].d;
+      $('startDate').max = days[days.length - 1].d;
       S.ready = true;
     } catch (e) {
       S.ready = false;
@@ -577,7 +577,7 @@
     let want = $('startDate').value || days[0].d;
     let idx = days.findIndex(function (d) { return d.d >= want; });
     if (idx < 0) idx = 0;
-    if (idx > days.length - 10) idx = Math.max(0, days.length - 10);
+    if (idx >= days.length) idx = days.length - 1;
     S.startIdx = idx;
 
     const cap = Math.max(100, Number($('capital').value) || 10000);
