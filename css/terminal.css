@@ -52,6 +52,27 @@ input:focus, select:focus { outline: none; border-color: var(--accent); }
   border: 1px solid var(--line); font-size: 13px; font-weight: 600;
 }
 .sym-row button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.search-wrap { position: relative; }
+.search-wrap input {
+  width: 100%; background: var(--panel2); border: 1px solid var(--line);
+  color: var(--text); padding: 10px 12px; border-radius: 8px; font-size: 14px; font-family: inherit;
+}
+.search-wrap input:focus { outline: none; border-color: var(--accent); }
+.sym-drop {
+  position: absolute; left: 0; right: 0; top: 44px; z-index: 30;
+  background: var(--panel2); border: 1px solid var(--line); border-radius: 10px;
+  max-height: 260px; overflow-y: auto; box-shadow: 0 12px 28px rgba(0, 0, 0, .5);
+}
+.drop-item {
+  display: flex; align-items: center; gap: 10px; padding: 9px 12px; cursor: pointer;
+  border-bottom: 1px solid var(--line); font-size: 13px;
+}
+.drop-item:last-child { border-bottom: none; }
+.drop-item:hover { background: var(--panel); }
+.drop-item b { font-family: ui-monospace, monospace; font-size: 14px; min-width: 52px; }
+.drop-item span { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.drop-empty { padding: 12px; color: var(--muted); font-size: 13px; }
 .seg { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .seg button { padding: 8px 14px; font-size: 13px; background: var(--panel2); }
 .seg button.on { background: var(--accent); color: #fff; }

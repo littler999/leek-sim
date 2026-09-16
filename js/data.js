@@ -2,8 +2,11 @@
   const LK = window.LK || (window.LK = {});
 
   LK.loadDaily = async function (symbol) {
-    const txt = await fetch('data/' + symbol + '.csv').then(function (r) { return r.text(); });
+    const resp = await fetch('data/' + String(symbol).toUpperCase() + '.csv');
+    if (!resp.ok) throw new Error('该标的暂无本地数据');
+    const txt = await resp.text();
     const lines = txt.trim().split('\n');
+    if (lines.length < 5) throw new Error('数据不完整');
     const days = [];
     for (let i = 1; i < lines.length; i++) {
       const p = lines[i].split(',');

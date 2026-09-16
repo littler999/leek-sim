@@ -45,9 +45,58 @@
         '（共 ' + days.length + ' 个交易日）';
       $('startDate').min = days[0].d;
       $('startDate').max = days[Math.max(0, days.length - 30)].d;
+      S.ready = true;
     } catch (e) {
-      $('rangeHint').textContent = '数据加载失败：' + e.message;
+      S.ready = false;
+      $('rangeHint').textContent = '⚠ ' + code + ' 暂无本地数据（已收录 ' + S.universe.length +
+        ' 只）。把代码发我，我补抓后就能玩。';
     }
+  }
+
+  async function loadUniverse() {
+    try {
+      const r = await fetch('data/symbols.json');
+      if (!r.ok) throw new Error('no index');
+      S.universe = await r.json();
+    } catch (e) {
+      S.universe = [];
+    }
+  }
+
+  function renderDrop(q) {
+    const drop = $('symDrop');
+    q = (q || '').trim().toUpperCase();
+    if (!q) { drop.classList.add('hidden'); return; }
+    const hits = [];
+    for (let i = 0; i < S.universe.length && hits.length < 8; i++) {
+      if (S.universe[i][0].indexOf(q) === 0) hits.push(S.universe[i]);
+    }
+    for (let i = 0; i < S.universe.length && hits.length < 8; i++) {
+      const it = S.universe[i];
+      if (it[0].indexOf(q) !== 0 && it[1].toUpperCase().indexOf(q) >= 0 && hits.indexOf(it) < 0) hits.push(it);
+    }
+    if (!hits.length) {
+      drop.innerHTML = '<div class="drop-empty">没找到「' + q + '」—— 已收录 ' + S.universe.length + ' 只</div>';
+      drop.classList.remove('hidden');
+      return;
+    }
+    let h = '';
+    for (let i = 0; i < hits.length; i++) {
+      h += '<div class="drop-item" data-sym="' + hits[i][0] + '"><b>' + hits[i][0] +
+        '</b><span>' + hits[i][1] + '</span></div>';
+    }
+    drop.innerHTML = h;
+    drop.classList.remove('hidden');
+    const items = drop.querySelectorAll('.drop-item');
+    for (let i = 0; i < items.length; i++) {
+      items[i].onclick = function () { pick(items[i].dataset.sym); };
+    }
+  }
+
+  function pick(code) {
+    $('symSearch').value = code;
+    $('symDrop').classList.add('hidden');
+    selectSymbol(code);
   }
 
   // ---------- 时钟 ----------
@@ -329,8 +378,23 @@
       b.textContent = s.code;
       b.dataset.sym = s.code;
       b.title = s.name;
-      b.onclick = function () { selectSymbol(s.code); };
+      b.onclick = function () { pick(s.code); };
       row.appendChild(b);
+    });
+
+    const inp = $('symSearch');
+    inp.addEventListener('input', function () { renderDrop(inp.value); });
+    inp.addEventListener('focus', function () { renderDrop(inp.value); });
+    inp.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        const first = document.querySelector('#symDrop .drop-item');
+        if (first) pick(first.dataset.sym);
+        else if (inp.value.trim()) pick(inp.value.trim().toUpperCase());
+      }
+    });
+    document.addEventListener('click', function (ev) {
+      if (ev.target !== inp) $('symDrop').classList.add('hidden');
     });
 
     document.querySelectorAll('#colorSeg button').forEach(function (b) {
@@ -394,7 +458,13 @@
 
   // ---------- 启动 ----------
   async function start() {
-    const days = await loadSymbol(S.symbol);
+    let days;
+    try {
+      days = await loadSymbol(S.symbol);
+    } catch (e) {
+      $('rangeHint').textContent = '⚠ ' + S.symbol + ' 还没有本地数据，先换一个已收录的标的';
+      return;
+    }
     S.days = days;
     let want = $('startDate').value || days[0].d;
     let idx = days.findIndex(function (d) { return d.d >= want; });
@@ -426,12 +496,19 @@
 
   async function init() {
     bind();
+    await loadUniverse();
     const q = new URLSearchParams(location.search);
     const sym = (q.get('sym') || 'SPY').toUpperCase();
     $('startDate').value = q.get('date') || '2022-01-03';
     if (q.get('cap')) $('capital').value = q.get('cap');
     if (q.get('lev')) $('leverage').value = q.get('lev');
+    $('symSearch').value = sym;
     await selectSymbol(sym);
+    if (q.get('q')) { $('symSearch').value = q.get('q'); renderDrop(q.get('q')); }
+    if (S.universe.length) {
+      const base = $('rangeHint').textContent;
+      if (base.indexOf('⚠') < 0) $('rangeHint').textContent = base + ' · 已收录 ' + S.universe.length + ' 只可搜索';
+    }
     $('btnStart').onclick = start;
     if (q.get('auto')) { await loadSymbol(sym); start(); }
   }

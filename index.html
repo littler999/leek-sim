@@ -20,8 +20,13 @@
     </p>
 
     <div class="field">
-      <label>标的</label>
+      <label>搜索标的（美股 / ETF）</label>
+      <div class="search-wrap">
+        <input type="text" id="symSearch" placeholder="输入代码或公司名，如 NVDA / Apple" autocomplete="off" />
+        <div id="symDrop" class="sym-drop hidden"></div>
+      </div>
       <div id="symRow" class="sym-row"></div>
+      <div id="rangeHint" class="hint">正在加载标的库…</div>
     </div>
 
     <div class="field">
