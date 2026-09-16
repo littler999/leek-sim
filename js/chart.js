@@ -14,6 +14,100 @@
     return out;
   };
 
+  // ---------- 多周期聚合（从真实日线聚合出 周 / 月 / 年 K）----------
+  function mondayOf(ds) {
+    const t = Date.UTC(+ds.slice(0, 4), +ds.slice(5, 7) - 1, +ds.slice(8, 10));
+    const dow = new Date(t).getUTCDay();
+    const back = (dow + 6) % 7;
+    return new Date(t - back * 86400000).toISOString().slice(0, 10);
+  }
+
+  LK.periodKey = function (ds, kind) {
+    if (kind === '1w') return mondayOf(ds);
+    if (kind === '1M') return ds.slice(0, 7);
+    if (kind === '1y') return ds.slice(0, 4);
+    return ds;
+  };
+
+  LK.periodLabel = function (ds, kind) {
+    if (kind === '1w') return mondayOf(ds).slice(5);
+    if (kind === '1M') return ds.slice(0, 7);
+    if (kind === '1y') return ds.slice(0, 4);
+    return ds.slice(5);
+  };
+
+  // 聚合 days[0..upto-1]（只聚合已收盘的日子，当天单独处理以免泄露未来）
+  LK.aggDaily = function (days, upto, kind) {
+    const out = [];
+    let curKey = null, cur = null;
+    for (let i = 0; i < upto && i < days.length; i++) {
+      const d = days[i];
+      const k = LK.periodKey(d.d, kind);
+      if (k !== curKey) {
+        cur = { key: k, o: d.o, hDone: d.h, lDone: d.l, cDone: d.c, v: d.v, di0: i, di1: i, label: LK.periodLabel(d.d, kind) };
+        out.push(cur);
+        curKey = k;
+      } else {
+        cur.hDone = Math.max(cur.hDone, d.h);
+        cur.lDone = Math.min(cur.lDone, d.l);
+        cur.cDone = d.c;
+        cur.v += d.v;
+        cur.di1 = i;
+      }
+    }
+    return out;
+  };
+
+  // 把当天（实时）并入最后一个桶，或新开一个桶
+  LK.mergeToday = function (buckets, today, kind, dayH, dayL, price, dayVol, di) {
+    const k = LK.periodKey(today.d, kind);
+    const bars = [], labels = [], ranges = [];
+    for (let i = 0; i < buckets.length; i++) {
+      const b = buckets[i];
+      bars.push({ o: b.o, h: b.hDone, l: b.lDone, c: b.cDone, v: b.v });
+      labels.push(b.label);
+      ranges.push([b.di0, b.di1]);
+    }
+    if (bars.length && buckets[buckets.length - 1].key === k) {
+      const last = bars[bars.length - 1];
+      last.h = Math.max(last.h, dayH);
+      last.l = Math.min(last.l, dayL);
+      last.c = price;
+      last.v += dayVol;
+      ranges[ranges.length - 1][1] = di;
+    } else {
+      bars.push({ o: today.o, h: dayH, l: dayL, c: price, v: dayVol });
+      labels.push(LK.periodLabel(today.d, kind));
+      ranges.push([di, di]);
+    }
+    return { bars: bars, labels: labels, ranges: ranges };
+  };
+
+  // 分钟聚合：1 分 → 5/15/60 分
+  LK.aggMinutes = function (minBars, upto, step) {
+    const out = [];
+    let cur = null;
+    const n = Math.min(minBars.length, upto + 1);
+    for (let i = 0; i < n; i++) {
+      const b = minBars[i];
+      if (i % step === 0) {
+        cur = { o: b.o, h: b.h, l: b.l, c: b.c, v: b.v };
+        out.push(cur);
+      } else {
+        cur.h = Math.max(cur.h, b.h);
+        cur.l = Math.min(cur.l, b.l);
+        cur.c = b.c;
+        cur.v += b.v;
+      }
+    }
+    return out;
+  };
+
+  LK.minuteLabel = function (i, step) {
+    const tot = 9 * 60 + 30 + i * step;
+    return String(Math.floor(tot / 60)).padStart(2, '0') + ':' + String(tot % 60).padStart(2, '0');
+  };
+
   LK.drawChart = function (cv, o) {
     const W = cv.clientWidth, H = cv.clientHeight;
     if (!W || !H) return;
@@ -33,6 +127,7 @@
     const plotH = H - padT - padB - (volH ? volH + 10 : 0);
     const plotW = W - padL - padR;
     if (plotW <= 10 || plotH <= 10) return;
+    cv.__geom = { padL: padL, plotW: plotW };
 
     const i0 = Math.max(0, o.i0 || 0);
     const i1 = Math.min(bars.length, o.i1 === undefined ? bars.length : o.i1);
@@ -116,6 +211,22 @@
       g.fillRect(padL + plotW + 2, y - 8, padR - 6, 16);
       g.fillStyle = '#fff'; g.font = '11px ui-monospace, Menlo, monospace';
       g.fillText(fmt(last.c, 2), padL + plotW + 6, y + 4);
+    }
+
+    if (o.cost != null && isFinite(o.cost) && o.cost > lo && o.cost < hi) {
+      const y = Math.round(Y(o.cost)) + 0.5;
+      g.strokeStyle = '#f0b90b';
+      g.setLineDash([5, 4]);
+      g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + plotW, y); g.stroke();
+      g.setLineDash([]);
+      g.fillStyle = '#f0b90b';
+      g.fillRect(padL + plotW + 2, y - 8, padR - 6, 16);
+      g.fillStyle = '#1b1a12';
+      g.font = '11px ui-monospace, Menlo, monospace';
+      g.fillText(fmt(o.cost, 2), padL + plotW + 6, y + 4);
+      g.fillStyle = '#f0b90b';
+      g.font = '11px -apple-system, sans-serif';
+      g.fillText('成本', padL + 4, y - 4);
     }
 
     if (o.markers) {

@@ -113,8 +113,9 @@ button.settle { padding: 6px 16px; background: var(--warn); color: #1a1a1a; font
 .chart-pane { background: var(--panel); display: flex; flex-direction: column; min-width: 0; }
 .chart-tools { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
 .ma { font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; }
-.synth { margin-left: auto; font-size: 11px; color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 20px; opacity: .85; }
-#chart { flex: 1; width: 100%; display: block; min-height: 0; cursor: crosshair; }
+.follow-tag { margin-left: auto; font-size: 11px; color: var(--muted); }
+.synth { font-size: 11px; color: var(--warn); border: 1px solid var(--warn); padding: 2px 8px; border-radius: 20px; opacity: .85; }
+#chart { flex: 1; width: 100%; display: block; min-height: 0; cursor: crosshair; touch-action: none; }
 .ohlc { padding: 6px 12px; font-size: 12px; color: var(--muted); font-family: ui-monospace, monospace; border-top: 1px solid var(--line); }
 
 .side { background: var(--panel); overflow-y: auto; display: flex; flex-direction: column; }

@@ -101,11 +101,18 @@
     <section class="chart-pane">
       <div class="chart-tools">
         <div class="seg small" id="tfSeg">
+          <button data-tf="1m">分时</button>
+          <button data-tf="5m">5分</button>
+          <button data-tf="15m">15分</button>
+          <button data-tf="60m">60分</button>
           <button data-tf="1d" class="on">日K</button>
-          <button data-tf="1m">1分钟</button>
+          <button data-tf="1w">周K</button>
+          <button data-tf="1M">月K</button>
+          <button data-tf="1y">年K</button>
         </div>
         <div class="ma" id="maInfo">MA5 -- · MA10 -- · MA20 --</div>
-        <div class="synth" id="synthTag" title="当日 1 分钟 K 线由算法按真实开高低收生成">分时合成</div>
+        <span class="follow-tag" id="followTag">跟随最新</span>
+        <div class="synth" id="synthTag" title="当日分钟 K 线由算法按真实开高低收生成">分时合成</div>
       </div>
       <canvas id="chart"></canvas>
       <div class="ohlc" id="ohlcBox">开 -- 高 -- 低 -- 收 -- 量 --</div>

@@ -1,5 +1,8 @@
 (function () {
   const LK = window.LK;
+  window.addEventListener('error', function (e) {
+    document.title = 'ERR: ' + e.message + ' @line' + e.lineno;
+  });
   const $ = function (id) { return document.getElementById(id); };
   const MIN_PER_DAY = 390;
   const SALT = 'leeksim-v1';
@@ -8,6 +11,7 @@
     symbol: 'SPY', days: [], di: 0, startIdx: 0, minute: 0, frac: 0,
     mult: 10, bars: [], price: 0, dayH: 0, dayL: 0, dayVol: 0,
     tf: '1d', eng: null, running: false, ended: false,
+    vp: { i0: 0, n: 120 }, follow: true, agg: null, aggDi: -1,
     cache: {}, last: 0, cross: { x: null, y: null }
   };
 
@@ -170,48 +174,73 @@
     }
   }
 
-  // ---------- 视图数据 ----------
-  function buildDaily() {
-    const from = Math.max(0, S.di - 119);
-    const bars = [], labels = [];
-    for (let i = from; i <= S.di; i++) {
-      const d = S.days[i];
-      if (i === S.di) bars.push({ o: d.o, h: S.dayH, l: S.dayL, c: S.price, v: S.dayVol });
-      else bars.push({ o: d.o, h: d.h, l: d.l, c: d.c, v: d.v });
-      labels.push(d.d.slice(5));
-    }
-    return { bars: bars, labels: labels };
+  // ---------- 视图数据（多周期）----------
+  const MIN_TF = { '1m': 1, '5m': 5, '15m': 15, '60m': 60 };
+  const DEFAULT_N = { '1m': 120, '5m': 96, '15m': 80, '60m': 60, '1d': 250, '1w': 260, '1M': 120, '1y': 30 };
+
+  function rebuildAgg() {
+    if (MIN_TF[S.tf]) { S.agg = null; return; }
+    S.agg = LK.aggDaily(S.days, S.di, S.tf);
+    S.aggDi = S.di;
   }
 
-  function buildMinute() {
-    const upto = Math.min(S.minute, S.bars.length - 1);
-    const bars = [], labels = [];
-    for (let i = 0; i <= upto; i++) {
-      bars.push(S.bars[i]);
-      const tot = 9 * 60 + 30 + i;
-      labels.push(i % 30 === 0 ? String(Math.floor(tot / 60)).padStart(2, '0') + ':' + String(tot % 60).padStart(2, '0') : '');
+  function buildView() {
+    const step = MIN_TF[S.tf];
+    if (step) {
+      const upto = Math.min(S.minute, S.bars.length - 1);
+      const bars = LK.aggMinutes(S.bars, upto, step);
+      const last = bars[bars.length - 1];
+      if (last) {
+        last.c = S.price;
+        last.h = Math.max(last.h, S.price);
+        last.l = Math.min(last.l, S.price);
+      }
+      const labels = bars.map(function (_, i) { return i % 6 === 0 ? LK.minuteLabel(i, step) : ''; });
+      return { bars: bars, labels: labels, ranges: null };
     }
-    const last = bars[bars.length - 1];
-    bars[bars.length - 1] = { o: last.o, h: Math.max(last.h, S.price), l: Math.min(last.l, S.price), c: S.price, v: last.v };
-    return { bars: bars, labels: labels };
+    if (!S.agg || S.aggDi !== S.di) rebuildAgg();
+    return LK.mergeToday(S.agg || [], S.days[S.di], S.tf, S.dayH, S.dayL, S.price, S.dayVol, S.di);
+  }
+
+  function buildMarkers(ranges) {
+    if (!ranges || !S.eng || !S.eng.trades.length) return null;
+    const out = [];
+    for (let k = 0; k < S.eng.trades.length; k++) {
+      const tr = S.eng.trades[k];
+      for (let i = 0; i < ranges.length; i++) {
+        if (tr.di >= ranges[i][0] && tr.di <= ranges[i][1]) {
+          out.push({ i: i, p: tr.price, type: (tr.side === 'buy' || tr.side === 'cover') ? 'buy' : 'sell' });
+          break;
+        }
+      }
+    }
+    return out;
   }
 
   function render() {
-    const v = S.tf === '1d' ? buildDaily() : buildMinute();
+    const v = buildView();
+    const total = v.bars.length;
+    if (S.follow) S.vp.i0 = Math.max(0, total - S.vp.n);
+    S.vp.i0 = Math.max(0, Math.min(S.vp.i0, Math.max(0, total - 3)));
+    const i1 = Math.min(total, S.vp.i0 + S.vp.n);
     const c = colors();
     const ma = [LK.calcMA(v.bars, 5), LK.calcMA(v.bars, 10), LK.calcMA(v.bars, 20)];
     LK.drawChart($('chart'), {
-      bars: v.bars, labels: v.labels, ma: ma, i0: 0, i1: v.bars.length,
-      up: c.up, down: c.down, cross: S.cross
+      bars: v.bars, labels: v.labels, ma: ma, i0: S.vp.i0, i1: i1,
+      up: c.up, down: c.down, cross: S.cross,
+      cost: (S.eng && S.eng.qty) ? S.eng.avgCost : null,
+      markers: buildMarkers(v.ranges)
     });
-    const b = v.bars[v.bars.length - 1];
+    const b = v.bars[Math.max(S.vp.i0, i1 - 1)];
     $('ohlcBox').textContent = '开 ' + fmtP(b.o) + '   高 ' + fmtP(b.h) + '   低 ' + fmtP(b.l) +
-      '   收 ' + fmtP(b.c) + '   量 ' + (b.v || 0).toLocaleString('en-US');
+      '   收 ' + fmtP(b.c) + '   量 ' + (b.v || 0).toLocaleString('en-US') +
+      '   [' + (S.vp.i0 + 1) + '/' + total + ']';
     const m = function (arr) { const x = arr[arr.length - 1]; return x == null ? '--' : fmtP(x); };
     $('maInfo').textContent = 'MA5 ' + m(ma[0]) + ' · MA10 ' + m(ma[1]) + ' · MA20 ' + m(ma[2]);
-    $('synthTag').textContent = S.tf === '1m'
+    $('synthTag').textContent = MIN_TF[S.tf]
       ? '分钟线为算法生成（历史分钟数据需付费源）'
       : '日线真实 · 判定可信';
+    $('followTag').textContent = S.follow ? '跟随最新' : '已锁定视口（双击复位）';
   }
 
   // ---------- 面板 ----------
@@ -356,6 +385,17 @@
     });
   }
 
+  function setTf(tf) {
+    S.tf = tf;
+    const btns = document.querySelectorAll('#tfSeg button');
+    for (let i = 0; i < btns.length; i++) {
+      btns[i].classList.toggle('on', btns[i].dataset.tf === tf);
+    }
+    S.vp.n = DEFAULT_N[tf] || 120;
+    S.follow = true;
+    rebuildAgg();
+  }
+
   // ---------- 主循环 ----------
   function frame(now) {
     if (!S.last) S.last = now;
@@ -419,11 +459,7 @@
     });
 
     document.querySelectorAll('#tfSeg button').forEach(function (b) {
-      b.onclick = function () {
-        document.querySelectorAll('#tfSeg button').forEach(function (x) { x.classList.remove('on'); });
-        b.classList.add('on');
-        S.tf = b.dataset.tf;
-      };
+      b.onclick = function () { setTf(b.dataset.tf); };
     });
 
     document.querySelectorAll('#qtyPreset button').forEach(function (b) {
@@ -443,11 +479,77 @@
     $('btnAgain').onclick = function () { location.reload(); };
 
     const cv = $('chart');
-    cv.addEventListener('mousemove', function (ev) {
-      const r = cv.getBoundingClientRect();
-      S.cross.x = ev.clientX - r.left; S.cross.y = ev.clientY - r.top;
+    const pts = new Map();
+    let drag = null, pinch = null;
+
+    function geom() {
+      return cv.__geom || { padL: 8, plotW: Math.max(10, cv.clientWidth - 74) };
+    }
+    function fracAt(clientX) {
+      const g = geom(), rect = cv.getBoundingClientRect();
+      return Math.max(0, Math.min(1, (clientX - rect.left - g.padL) / g.plotW));
+    }
+    function applyZoom(newN, frac) {
+      newN = Math.max(20, Math.min(3000, Math.round(newN)));
+      const anchor = S.vp.i0 + frac * S.vp.n;
+      S.vp.n = newN;
+      S.vp.i0 = Math.round(anchor - frac * newN);
+    }
+
+    cv.addEventListener('wheel', function (ev) {
+      ev.preventDefault();
+      applyZoom(S.vp.n * (ev.deltaY > 0 ? 1.18 : 1 / 1.18), fracAt(ev.clientX));
+      S.follow = false;
+    }, { passive: false });
+
+    cv.addEventListener('pointerdown', function (ev) {
+      cv.setPointerCapture(ev.pointerId);
+      pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pts.size === 1) {
+        drag = { x: ev.clientX, i0: S.vp.i0 };
+      } else if (pts.size === 2) {
+        const a = Array.from(pts.values());
+        pinch = { dist: Math.max(1, Math.abs(a[0].x - a[1].x)), n: S.vp.n, i0: S.vp.i0, frac: fracAt((a[0].x + a[1].x) / 2) };
+        drag = null;
+      }
     });
+
+    cv.addEventListener('pointermove', function (ev) {
+      if (pts.has(ev.pointerId)) pts.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
+      if (pinch && pts.size === 2) {
+        const a = Array.from(pts.values());
+        const d = Math.max(1, Math.abs(a[0].x - a[1].x));
+        const target = Math.max(20, Math.min(3000, Math.round(pinch.n * (pinch.dist / d))));
+        S.vp.n = target;
+        S.vp.i0 = Math.round(pinch.i0 + pinch.frac * (pinch.n - target));
+        S.follow = false;
+        return;
+      }
+      if (drag && pts.size === 1) {
+        const g = geom();
+        S.vp.i0 = Math.round(drag.i0 - (ev.clientX - drag.x) * (S.vp.n / g.plotW));
+        S.follow = false;
+        return;
+      }
+      if (ev.pointerType === 'mouse') {
+        const r = cv.getBoundingClientRect();
+        S.cross.x = ev.clientX - r.left;
+        S.cross.y = ev.clientY - r.top;
+      }
+    });
+
+    function endPointer(ev) {
+      pts.delete(ev.pointerId);
+      if (pts.size < 2) pinch = null;
+      if (pts.size === 0) drag = null;
+    }
+    cv.addEventListener('pointerup', endPointer);
+    cv.addEventListener('pointercancel', endPointer);
     cv.addEventListener('mouseleave', function () { S.cross.x = null; S.cross.y = null; });
+    cv.addEventListener('dblclick', function () {
+      S.vp.n = DEFAULT_N[S.tf] || 120;
+      S.follow = true;
+    });
 
     window.addEventListener('keydown', function (ev) {
       if (ev.code === 'Space') { ev.preventDefault(); S.running = !S.running; }
@@ -503,14 +605,15 @@
     if (q.get('cap')) $('capital').value = q.get('cap');
     if (q.get('lev')) $('leverage').value = q.get('lev');
     $('symSearch').value = sym;
-    await selectSymbol(sym);
     if (q.get('q')) { $('symSearch').value = q.get('q'); renderDrop(q.get('q')); }
+    await selectSymbol(sym);
     if (S.universe.length) {
       const base = $('rangeHint').textContent;
       if (base.indexOf('⚠') < 0) $('rangeHint').textContent = base + ' · 已收录 ' + S.universe.length + ' 只可搜索';
     }
+    if (q.get('tf')) setTf(q.get('tf'));
     $('btnStart').onclick = start;
-    if (q.get('auto')) { await loadSymbol(sym); start(); }
+    if (q.get('auto')) { await loadSymbol(sym); start(); if (q.get('tf')) setTf(q.get('tf')); }
   }
 
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
