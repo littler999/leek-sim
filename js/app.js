@@ -15,7 +15,13 @@
     cache: {}, last: 0, cross: { x: null, y: null }
   };
 
-  function fmtP(n) { return Number(n).toFixed(2); }
+  function fmtP(n) {
+    const v = Number(n);
+    if (!isFinite(v)) return '--';
+    const a = Math.abs(v);
+    const d = a < 1 ? 4 : (a < 5 ? 3 : 2);
+    return v.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d });
+  }
   function fmtM(n) { return (n >= 0 ? '' : '-') + '$' + Math.abs(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
   function pct(n) { return (n >= 0 ? '+' : '') + n.toFixed(2) + '%'; }
   function cls(n) { return n > 0 ? 'up' : (n < 0 ? 'down' : 'flatc'); }

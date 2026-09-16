@@ -3,6 +3,15 @@
 
   function fmt(n, d) { return Number(n).toFixed(d === undefined ? 2 : d); }
 
+  // 价格读数：千分位 + 自适应小数位（<1 给 4 位，<5 给 3 位，否则 2 位），提升可读性
+  function fmtPrice(p) {
+    if (p == null || !isFinite(p)) return '--';
+    const a = Math.abs(p);
+    const d = a < 1 ? 4 : (a < 5 ? 3 : 2);
+    try { return p.toLocaleString('en-US', { minimumFractionDigits: d, maximumFractionDigits: d }); }
+    catch (e) { return p.toFixed(d); }
+  }
+
   LK.calcMA = function (bars, period) {
     const out = new Array(bars.length).fill(null);
     let sum = 0;
@@ -122,7 +131,7 @@
     const bars = o.bars || [];
     if (!bars.length) return;
 
-    const padL = 8, padR = 66, padT = 10, padB = 20;
+    const padL = 8, padR = 74, padT = 10, padB = 20;
     const volH = o.showVol === false ? 0 : Math.round(H * 0.17);
     const plotH = H - padT - padB - (volH ? volH + 10 : 0);
     const plotW = W - padL - padR;
@@ -132,33 +141,39 @@
     const i0 = Math.max(0, o.i0 || 0);
     const i1 = Math.min(bars.length, o.i1 === undefined ? bars.length : o.i1);
     const n = Math.max(1, i1 - i0);
+    const base = bars[i0] ? (bars[i0].o || 1) : 1;
+    const conv = o.pct ? function (p) { return (p / base - 1) * 100; } : function (p) { return p; };
+    const suf = o.pct ? '%' : '';
 
     let hi = -Infinity, lo = Infinity, vmax = 0;
     for (let i = i0; i < i1; i++) {
       const b = bars[i];
-      if (b.h > hi) hi = b.h;
-      if (b.l < lo) lo = b.l;
+      const hh = conv(b.h), ll = conv(b.l);
+      if (hh > hi) hi = hh;
+      if (ll < lo) lo = ll;
       if (b.v > vmax) vmax = b.v;
     }
     if (o.markers) for (let k = 0; k < o.markers.length; k++) {
       const m = o.markers[k];
-      if (m.i >= i0 && m.i < i1) { if (m.p > hi) hi = m.p; if (m.p < lo) lo = m.p; }
+      if (m.i >= i0 && m.i < i1) { const v = conv(m.p); if (v > hi) hi = v; if (v < lo) lo = v; }
     }
     const pd = (hi - lo) * 0.06 || 1;
     hi += pd; lo -= pd;
 
     const X = function (i) { return padL + (i - i0 + 0.5) * (plotW / n); };
-    const Y = function (p) { return padT + (hi - p) / (hi - lo) * plotH; };
+    const Y = function (p) { return padT + (hi - conv(p)) / (hi - lo) * plotH; };
 
-    g.font = '11px ui-monospace, Menlo, monospace';
+    g.font = '12px ui-monospace, Menlo, monospace';
     g.strokeStyle = '#1e222d';
     g.lineWidth = 1;
-    g.fillStyle = '#787b86';
-    for (let s = 0; s <= 4; s++) {
-      const p = lo + (hi - lo) * s / 4;
-      const y = Math.round(Y(p)) + 0.5;
+    for (let s = 0; s <= 5; s++) {
+      const v = lo + (hi - lo) * s / 5;
+      const y = Math.round(padT + (hi - v) / (hi - lo) * plotH) + 0.5;
       g.beginPath(); g.moveTo(padL, y); g.lineTo(padL + plotW, y); g.stroke();
-      g.fillText(fmt(p, 2), padL + plotW + 6, y + 4);
+      g.fillStyle = 'rgba(13,17,23,0.92)';
+      g.fillRect(padL + plotW + 2, y - 8, padR - 4, 16);
+      g.fillStyle = '#b2b5be';
+      g.fillText(o.pct ? fmt(v, 2) + suf : fmtPrice(v) + suf, padL + plotW + 6, y + 4);
     }
     const stepT = Math.max(1, Math.round(n / 6));
     for (let i = i0; i < i1; i += stepT) {
@@ -174,6 +189,23 @@
       g.beginPath(); g.moveTo(Math.round(x) + 0.5, Y(b.h)); g.lineTo(Math.round(x) + 0.5, Y(b.l)); g.stroke();
       const yo = Y(b.o), yc = Y(b.c);
       g.fillRect(x - cw / 2, Math.min(yo, yc), cw, Math.max(1, Math.abs(yc - yo)));
+    }
+
+    if (n >= 3) {
+      let iHi = i0, iLo = i0;
+      for (let i = i0; i < i1; i++) {
+        if (bars[i].h > bars[iHi].h) iHi = i;
+        if (bars[i].l < bars[iLo].l) iLo = i;
+      }
+      g.font = '11px ui-monospace, Menlo, monospace';
+      g.fillStyle = o.up;
+      g.fillText('高 ' + fmtPrice(bars[iHi].h),
+        Math.min(padL + plotW - 58, Math.max(padL, X(iHi) - 20)),
+        Math.max(padT + 12, Y(bars[iHi].h) - 7));
+      g.fillStyle = o.down;
+      g.fillText('低 ' + fmtPrice(bars[iLo].l),
+        Math.min(padL + plotW - 58, Math.max(padL, X(iLo) - 20)),
+        Math.min(padT + plotH - 5, Y(bars[iLo].l) + 15));
     }
 
     if (o.ma) {
@@ -210,7 +242,7 @@
       g.fillStyle = last.c >= last.o ? o.up : o.down;
       g.fillRect(padL + plotW + 2, y - 8, padR - 6, 16);
       g.fillStyle = '#fff'; g.font = '11px ui-monospace, Menlo, monospace';
-      g.fillText(fmt(last.c, 2), padL + plotW + 6, y + 4);
+      g.fillText(fmtPrice(last.c), padL + plotW + 6, y + 4);
     }
 
     if (o.cost != null && isFinite(o.cost) && o.cost > lo && o.cost < hi) {
@@ -223,7 +255,7 @@
       g.fillRect(padL + plotW + 2, y - 8, padR - 6, 16);
       g.fillStyle = '#1b1a12';
       g.font = '11px ui-monospace, Menlo, monospace';
-      g.fillText(fmt(o.cost, 2), padL + plotW + 6, y + 4);
+      g.fillText(fmtPrice(o.cost), padL + plotW + 6, y + 4);
       g.fillStyle = '#f0b90b';
       g.font = '11px -apple-system, sans-serif';
       g.fillText('成本', padL + 4, y - 4);
@@ -254,13 +286,13 @@
       g.setLineDash([]);
       const p = hi - (cy - padT) / plotH * (hi - lo);
       g.fillStyle = '#363a45'; g.fillRect(padL + plotW + 2, cy - 8, padR - 6, 16);
-      g.fillStyle = '#d1d4dc'; g.font = '11px ui-monospace, Menlo, monospace';
-      g.fillText(fmt(p, 2), padL + plotW + 6, cy + 4);
+      g.fillStyle = '#d1d4dc'; g.font = '12px ui-monospace, Menlo, monospace';
+      g.fillText(o.pct ? fmt(p, 2) + suf : fmtPrice(p) + suf, padL + plotW + 6, cy + 4);
 
       const bi = Math.max(i0, Math.min(i1 - 1, i0 + Math.floor((cx - padL) / plotW * n)));
       const b = bars[bi];
       const txt = (o.labels && o.labels[bi] ? o.labels[bi] + '  ' : '') +
-        '开' + fmt(b.o) + ' 高' + fmt(b.h) + ' 低' + fmt(b.l) + ' 收' + fmt(b.c);
+        '开' + fmtPrice(b.o) + ' 高' + fmtPrice(b.h) + ' 低' + fmtPrice(b.l) + ' 收' + fmtPrice(b.c);
       g.font = '11px ui-monospace, Menlo, monospace';
       const tw = g.measureText(txt).width + 14;
       g.fillStyle = 'rgba(28,32,42,0.95)';
