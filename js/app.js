@@ -6,7 +6,7 @@
 
   const S = {
     symbol: 'SPY', days: [], di: 0, startIdx: 0, minute: 0, frac: 0,
-    speed: 1, bars: [], price: 0, dayH: 0, dayL: 0, dayVol: 0,
+    mult: 10, bars: [], price: 0, dayH: 0, dayL: 0, dayVol: 0,
     tf: '1d', eng: null, running: false, ended: false,
     cache: {}, last: 0, cross: { x: null, y: null }
   };
@@ -160,6 +160,9 @@
       '   收 ' + fmtP(b.c) + '   量 ' + (b.v || 0).toLocaleString('en-US');
     const m = function (arr) { const x = arr[arr.length - 1]; return x == null ? '--' : fmtP(x); };
     $('maInfo').textContent = 'MA5 ' + m(ma[0]) + ' · MA10 ' + m(ma[1]) + ' · MA20 ' + m(ma[2]);
+    $('synthTag').textContent = S.tf === '1m'
+      ? '分钟线为算法生成（历史分钟数据需付费源）'
+      : '日线真实 · 判定可信';
   }
 
   // ---------- 面板 ----------
@@ -310,7 +313,7 @@
     const dt = Math.min(0.1, (now - S.last) / 1000);
     S.last = now;
     if (S.running && !S.ended) {
-      advance(dt * S.speed);
+      advance(dt * S.mult / 60);
       syncPrice();
       if (S.eng) { S.eng.trackEquity(S.price); checkLiq(); }
     }
@@ -342,8 +345,8 @@
       b.onclick = function () {
         document.querySelectorAll('#speedBox button').forEach(function (x) { x.classList.remove('on'); });
         b.classList.add('on');
-        S.speed = Number(b.dataset.sp);
-        S.running = S.speed > 0;
+        S.mult = Number(b.dataset.mult);
+        S.running = S.mult > 0;
       };
     });
 

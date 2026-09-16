@@ -75,11 +75,12 @@
     </div>
     <div class="tb-right">
       <div class="speed" id="speedBox">
-        <button data-sp="0">⏸</button>
-        <button data-sp="1" class="on">1x</button>
-        <button data-sp="5">5x</button>
-        <button data-sp="20">20x</button>
-        <button data-sp="60">60x</button>
+        <button data-mult="0" title="暂停（空格键）">⏸</button>
+        <button data-mult="1" title="实时速度：1 根 1 分钟 K 线 = 60 秒（和真盯盘一样慢）">实时</button>
+        <button data-mult="10" class="on" title="1 根 K 线 = 6 秒 · 一整天约 39 分钟">10×</button>
+        <button data-mult="60" title="1 根 K 线 = 1 秒 · 一整天约 6.5 分钟">60×</button>
+        <button data-mult="300" title="1 根 K 线 = 0.2 秒 · 一整天约 78 秒">300×</button>
+        <button data-mult="1800" title="一整天约 13 秒 · 适合快速推进">1800×</button>
       </div>
       <div class="skip">
         <button data-sk="1d">+1日</button>
